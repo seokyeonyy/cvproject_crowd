@@ -20,3 +20,37 @@
 ## 설치 및 실행 방법
 
 ### 1. 레포지토리 복제
+```bash
+git clone https://github.com/seokyeonyy/cvproject_crowd.git
+cd cvproject_crowd
+```
+
+### 2. 가상환경 설정 및 라이브러리 설치
+# 가상환경 생성
+python -m venv venv
+# 가상환경 활성화
+venv\Scripts\activate
+# 의존성 패키지 설치
+pip install -r requirements.txt
+
+### 3. 가중치 파일 
+GitHub 용량 제한으로 인해 모델 가중치는 별도로 제공합니다.
+* **다운로드 링크**: [https://drive.google.com/file/d/1DtZd0fJXHqrBgn-ZcnmdVTmVFpBe74-s/view?usp=sharing]
+* **설치 방법**: 위 링크에서 다운로드한 'best.pt' 파일을 프로젝트 루트의 'weights/' 폴더 내에 배치하세요. 
+
+### 4. 애플리케이션 실행
+streamlit run app.py
+
+### 데이터 파이프라인 
+1. 데이터 입력: 카메라/영상 프레임 캡처 및 정규화
+2. 객체 탐지 및 추적: YOLOv8 탐지 밑 ByteTrack/BoT-SORT ID 추적
+3. 히트맵 연산: 중심점 좌표 기반 원형 마스크 생성 및 가우시안 블러 적용
+4. 가중치 누적: 프레임별 히트맵 강도 누적을 통한 밀집도 표현
+5. 시각화 및 합성: 알파 블렌딩을 통한 원본 영상과 히트맵의 실시간 합성 출력
+
+### 팀원별 역할 분담
+| 이름 | 역할 | 
+
+| 이정민 | 데이터셋(train) 라벨링 | YOLO 모델 최적화, BoT-SORT 모델 최적화 | 모델 성능 평가 | 오분류/탐지 실패 분석 | 다양한 영상 환경에서의 성능 테스트, 예외 케이스 처리 로직 검증 | 보고서 작성 | ppt 작성 |
+
+| 홍석연 | 데이터셋(valid)라벨링 | ByteTrack 모델 최적화 | 모델 성능 평가 |추적 로직 및 히트맵 렌더링 엔진 구현 | GitHub 레포지토리 관리, Streamlit UI/UX 설계 및 배포 | 보고서 작성 | 발표 대본 작성 |
