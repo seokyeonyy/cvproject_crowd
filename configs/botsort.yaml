@@ -1,0 +1,14 @@
+# configs/botsort.yaml
+tracker_type: botsort # tracker type, ['botsort', 'bytetrack']
+track_high_thresh: 0.5 # threshold for the first association
+track_low_thresh: 0.1 # threshold for the second association
+new_track_thresh: 0.6 # threshold for initiating a new track if the detection does not match any existing track
+track_buffer: 90 # 📌 오클루전(13~16초) 극복을 위해 90프레임(3초)으로 확장
+match_thresh: 0.8 # threshold for matching tracks
+
+# BoT-SORT 전용 필수 파라미터들 (오류 해결 핵심)
+gating_thresh: 0.25 # gating threshold for g_dist
+proximity_thresh: 0.5 # threshold for iou_dist
+appearance_thresh: 0.25 # threshold for appearance_dist
+with_reid: True # Re-ID 기능 켜기 (BoT-SORT 핵심)
+fuse_score: True # 📌 [이게 없어서 에러 발생] 레이블 점수 융합 여부 설정

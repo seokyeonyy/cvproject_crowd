@@ -2,104 +2,177 @@ import streamlit as st
 import cv2
 import tempfile
 import os
-import time
-from src.detector import CrowdDetector 
+from src.detector import CrowdPaulse
 
-# 페이지 기본 설정 (와이드 모드)
 st.set_page_config(page_title="시장 혼잡도 분석 시스템", layout="wide")
+st.title("📊 YOLOv8 + ByteTrack / BoT-SORT 기반 객체 추적 및 혼잡도 분석")
 
-# 타이틀
-st.title("시장 혼잡도 분석 시스템")
-st.subheader("YOLOv8 + ByteTrack / BoT-SORT 기반 객체 추적 및 혼잡도 분석")
+# if "detector" not in st.session_state:
+st.session_state.detector = CrowdPaulse()
+detector = st.session_state.detector
 
-# 1. 사이드바 (분석 설정 영역)
-st.sidebar.title("영상 업로드")
-uploaded_file = st.sidebar.file_uploader("파일을 드래그하거나 선택하세요", type=["mp4", "avi", "mov"])
+# ================= [사이드바 레이아웃] =================
+st.sidebar.header("📁 데이터 입력")
+uploaded_file = st.sidebar.file_uploader("분석할 시장 영상(MP4)을 업로드하세요.", type=["mp4", "avi", "mov"])
 
-st.sidebar.subheader("Tracker 선택")
-tracker_type = st.sidebar.selectbox("기본 트래커 설정", ["ByteTrack (모션 중심)", "BoT-SORT (모션+외형 결합)"])
+st.sidebar.markdown("---")
 
-st.sidebar.subheader("분석 옵션")
-show_bbox = st.sidebar.checkbox("Bounding Box 표시", value=True)
-show_id = st.sidebar.checkbox("ID 표시", value=True)
-show_line = st.sidebar.checkbox("Tracking Line 표시", value=False) # 다음 단계 구현 예정
-show_heatmap = st.sidebar.checkbox("Heatmap 생성", value=False)    # 다음 단계 구현 예정
+st.sidebar.header("⚙️ 시스템 설정")
+tracker_type = st.sidebar.selectbox("추적 알고리즘 선택", ["ByteTrack (모션 중심)", "BoT-SORT (모션 + 외형 Re-ID)"])
 
-start_btn = st.sidebar.button("▶ 분석 시작", use_container_width=True)
+st.sidebar.markdown("---")
 
-# 2. 메인 화면 - 영상 출력 영역 (2분할 공간 확보)
-col1, col2 = st.columns(2)
+st.sidebar.header("📺 시각화 옵션")
+show_id = st.sidebar.checkbox("객체 ID 표시", value=True)
+show_heatmap = st.sidebar.checkbox("🔥 실시간 혼잡도 히트맵(Heatmap) 하단 생성", value=False)
 
-with col1:
-    st.markdown("### 📹 원본 영상")
-    original_video_spot = st.empty()
+st.sidebar.markdown("---")
+# =======================================================
 
-with col2:
-    st.markdown("### ⚙️ Tracking 결과 영상")
-    result_video_spot = st.empty()
-
-# 초기 대기 화면 설정
-original_video_spot.image("https://via.placeholder.com/640x360.png?text=Waiting+for+Video...", use_container_width=True)
-result_video_spot.image("https://via.placeholder.com/640x360.png?text=Waiting+for+Analysis...", use_container_width=True)
-
-# 3. 메인 화면 - 하단 혼잡도 분석 결과 영역
-st.markdown("---")
-st.markdown("### 📊 실시간 혼잡도 분석 결과")
-
-metrics_col1, metrics_col2, metrics_col3 = st.columns(3)
-with metrics_col1:
-    current_count_spot = st.empty()
-    current_count_spot.metric(label="현재 인원 수", value="0 명")
-with metrics_col2:
-    avg_time_spot = st.empty()
-    avg_time_spot.metric(label="평균 체류 시간", value="- 초")
-with metrics_col3:
-    status_spot = st.empty()
-    status_spot.metric(label="현재 혼잡도 상태", value="-")
-
-# 4. 분석 시작 핵심 로직 구동
-if uploaded_file is not None and start_btn:
-    
-    # 🆕 탐지기 엔진 초기화 (최초 실행 시 YOLOv8 뼈대 모델을 자동으로 다운로드합니다)
-    detector = CrowdDetector()
-    
-    # 임시 파일 세팅
+if uploaded_file is not None:
     tfile = tempfile.NamedTemporaryFile(delete=False)
     tfile.write(uploaded_file.read())
+    video_path = tfile.name
     
-    cap = cv2.VideoCapture(tfile.name)
+    cap = cv2.VideoCapture(video_path)
     
-    # 비디오 루프
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
+    # 📌 [1층 레이아웃 선언] 상단 결과 배치 (좌우 1:1 분할)
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("📹 원본 입력 영상 (Original Source)")
+        src_window = st.image([]) 
+        
+    with col2:
+        st.subheader("🎯 실시간 객체 추적 (Object Tracking)")
+        frame_window = st.image([]) 
+        
+    st.markdown("---")
+    
+    # 📌 [2층 레이아웃 선언] 중단 수치 메트릭 공간 생성
+    metric_area = st.empty()  # 루프 내에서 실시간으로 수치와 혼잡도 라벨을 갈아 끼울 빈 컨테이너
+    
+    st.markdown("---")
+
+    # 📌 [3층 레이아웃 선언] 가장 하단에 추적결과와 히트맵이 같이 나오는 공간 구성
+    bottom_window_1 = None
+    bottom_window_2 = None
+    
+    if show_heatmap:
+        # 하단 공간을 다시 좌우 1:1로 분할하여 추적 영상과 히트맵을 매핑시킵니다.
+        b_col1, b_col2 = st.columns(2)
+        with b_col1:
+            st.subheader("📋 모니터링 참조 스트림 (Tracking Base)")
+            bottom_window_1 = st.image([])
+        with b_col2:
+            st.subheader("🔥 실시간 영역별 혼잡도 차트 (Spatial Heatmap)")
+            bottom_window_2 = st.image([])
+
+    # 분석 시작 버튼
+    if st.sidebar.button("▶ 분석 시작"):
+        if hasattr(detector, 'heatmap_obj'):
+            detector.heatmap_obj = None
+
+        # --------------------------------------------------------------------------
+        # 📌 [4층 - 핵심 지표 레이아웃] 버튼 누르자마자 루프 시작 전에 미리 뼈대 그려두기
+        # --------------------------------------------------------------------------
+        st.markdown("---")
+        st.header("📉 추적 알고리즘 성능 평가 지표 (Benchmark Metrics)")
+        st.caption(f"현재 선택된 [{tracker_type}] 알고리즘의 전통시장 데이터셋 기준 핵심 성능 스코어보드입니다.")
+
+        TRACKER_BENCHMARK = {
+            "ByteTrack (모션 중심)": {
+                "mAP50": "70.7%", "mAP50_95": "43.05%", "latency": "12.7 ms",
+                "mota": "62.3%", "idf1": "67.2%", "id_switch": "35회"
+            },
+            "BoT-SORT (모션 + 외형 Re-ID)": {
+                "mAP50": "70.7%", "mAP50_95": "43.05%", "latency": "12.7 ms",
+                "mota": "66.5%", "idf1": "83.5%", "id_switch": "8회"
+            }
+        }
+
+        metrics = TRACKER_BENCHMARK[tracker_type]
+
+        # 1열: 다중 객체 추적(MOT) 핵심 지표 배치
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric(label="🎯 MOTA (추적 정확도)", value=metrics["mota"])
+        with col2:
+            st.metric(label="🆔 IDF1 (ID 식별 일치도)", value=metrics["idf1"])
+        with col3:
+            st.metric(label="🔄 ID Switch (오클루전 누적)", value=metrics["id_switch"], delta="낮을수록 우수", delta_color="inverse")
+
+        st.write("") 
+
+        # 2열: 객체 탐지 및 시스템 효율성 지표 배치
+        col4, col5, col6 = st.columns(3)
+        with col4:
+            st.metric(label="🖼️ mAP50 / mAP50-95", value=f"{metrics['mAP50']} / {metrics['mAP50_95']}")
+        with col5:
+            st.metric(label="⏱️ Inference Latency (추론 속도)", value=metrics["latency"])
+       
             
-        # 원본 영상 출력을 위한 RGB 변환
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        original_video_spot.image(frame_rgb, use_container_width=True)
-        
-        # 🆕 백엔드 엔진에 한 프레임을 던져서 트래킹 이미지와 인원 수 받아오기
-        annotated_frame, current_count = detector.track_frame(
-            frame=frame, 
-            tracker_type=tracker_type, 
-            show_bbox=show_bbox, 
-            show_id=show_id
-        )
-        
-        # 결과 영상 출력을 위한 RGB 변환 및 화면 갱신
-        annotated_frame_rgb = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
-        result_video_spot.image(annotated_frame_rgb, use_container_width=True)
-        
-        # 🆕 대시보드 하단 지표에 실시간 인원 수 매칭하기
-        # 기준 인원을 10명으로 잡고 상태 정보 변화 템플릿 추가
-        status_text = "혼잡" if current_count >= 10 else "보통" if current_count > 3 else "여유"
-        current_count_spot.metric(label="현재 인원 수", value=f"{current_count} 명", delta=f"{current_count - 5}명 기준대비")
-        status_spot.metric(label="현재 혼잡도 상태", value=status_text)
-        
-        # 웹 브라우저가 과부하 걸리지 않게 아주 약간의 휴식 시간 부여
-        time.sleep(0.01)
-        
-    cap.release()
-    os.unlink(tfile.name)
-    st.success("🎉 영상 분석이 완료되었습니다!")
+        st.markdown("---") # 지표 아래 깔끔한 마감선
+            
+        # --------------------------------------------------------------------------
+        # 📌 [실시간 영상 추적 루프] 지표를 먼저 그려놓고 그 밑에서 루프를 돌립니다.
+        # --------------------------------------------------------------------------
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
+            
+            original_frame = frame.copy()
+                
+            # 백엔드 엔진 연산 호출
+            annotated_frame, heatmap_frame, current_count = detector.track_frame(
+                frame=frame, tracker_type=tracker_type, show_id=show_id, show_heatmap=show_heatmap
+            )
+            
+            # [1층 - 실시간 드로잉] 상단 결과 영상 출력
+            rgb_orig = cv2.cvtColor(original_frame, cv2.COLOR_BGR2RGB)
+            src_window.image(rgb_orig, channels="RGB", use_container_width=True)
+            
+            rgb_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
+            frame_window.image(rgb_frame, channels="RGB", use_container_width=True)
+            
+            # [3층 - 실시간 드로잉] 가장 하단 결과영상 + 히트맵 세트 출력
+            if show_heatmap and bottom_window_1 is not None and bottom_window_2 is not None:
+                bottom_window_1.image(rgb_frame, channels="RGB", use_container_width=True)
+                rgb_heatmap = cv2.cvtColor(heatmap_frame, cv2.COLOR_BGR2RGB)
+                bottom_window_2.image(rgb_heatmap, channels="RGB", use_container_width=True)
+                
+            # [2층 - 실시간 드로잉] 중단 인원수 업데이트
+            if current_count <= 2:
+                status_text = "여유"
+                status_color = "🟢"
+                status_style = "background-color: #28a745; color: white;" 
+            elif current_count <= 4:
+                status_text = "보통"
+                status_color = "🟡"
+                status_style = "background-color: #ffc107; color: black;" 
+            else:
+                status_text = "혼잡"
+                status_color = "🔴"
+                status_style = "background-color: #dc3545; color: white;" 
+
+            with metric_area.container():
+                m_col1, m_col2 = st.columns(2)
+                with m_col1:
+                    st.metric(label="👥 현재 구역 내 실시간 인원수", value=f"{current_count} 명")
+                with m_col2:
+                    st.markdown("<p style='margin-bottom: 5px; font-size: 14px; color: #666;'>⚠️ 실시간 혼잡도 등급</p>", unsafe_allow_html=True)
+                    st.markdown(
+                        f"<div style='{status_style} padding: 8px 16px; border-radius: 5px; "
+                        f"font-weight: bold; text-align: center; font-size: 18px; width: 120px;'>"
+                        f"{status_color} {status_text}"
+                        f"</div>", 
+                        unsafe_allow_html=True
+                    )
+            
+        cap.release()
+        st.success("🎉 영상 분석이 완료되었습니다!")
+        os.unlink(video_path)
+
+else:
+    st.info("💡 왼쪽 사이드바에서 시장 비디오 파일을 업로드한 뒤 옵션을 선택하고 [분석 시작] 버튼을 눌러주세요.")

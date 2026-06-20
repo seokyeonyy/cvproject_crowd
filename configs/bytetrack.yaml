@@ -1,0 +1,20 @@
+# configs/bytetrack.yaml
+tracker_type: bytetrack # tracker type, ['botsort', 'bytetrack']
+#[핵심 수정]1차 매핑 기준 완화(기존 0.5=>0.3)
+#확실하게 사람이라고 판단되는 신뢰도 기준을 낮춤(시장환경에서는 사람의 일부가 가려지므로)
+track_high_thresh: 0.3  # threshold for the first association
+#[핵심 수정]2차 매핑 기준 완화(기존 0.1->0.05)
+#가려지거나 흐릿해진 사람 객체를 끝까지 놓치지 않으려고
+track_low_thresh: 0.05   # threshold for the second association
+#새 트랙 기준 완화(기존 0.6->0.4)
+#처음 등장한 사람에게 새로운 ID를 부여하는 문턱
+new_track_thresh: 0.4   # threshold for initiating a new track if the detection does not match any existing track
+#버퍼 확장(기존 30->90)
+# 사람이 물체나 다른 사람에게 완전히 가려졌을 때, 이전 ID를 기억하며 기다려주는 프레임 수입니다.
+# 30fps 영상 기준으로 90은 3초 동안 사라져도 ID를 유지해 줍니다
+track_buffer: 90        # 📌 원래 ID 유지를 위해 기존 30에서 90(3초)으로 확장 조정
+match_thresh: 0.8       # threshold for matching tracks
+fuse_score: True
+
+
+
