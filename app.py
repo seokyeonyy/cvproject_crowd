@@ -3,13 +3,13 @@ import cv2
 import tempfile
 import os
 import time
-from src.detector import CrowdPaulse
+from src.detector import CrowdPulse
 
 st.set_page_config(page_title="시장 혼잡도 분석 시스템", layout="wide")
 st.title("📊 YOLOv8 + ByteTrack / BoT-SORT 기반 객체 추적 및 혼잡도 분석")
 
 if "detector" not in st.session_state:
-    st.session_state.detector = CrowdPaulse()
+    st.session_state.detector = CrowdPulse()
 detector = st.session_state.detector
 
 # ================= [사이드바 레이아웃] =================

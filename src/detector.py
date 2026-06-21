@@ -4,7 +4,7 @@ import numpy as np
 from ultralytics import YOLO
 import streamlit as st
 
-class CrowdPaulse:
+class CrowdPulse:
     def __init__(self, model_path=None):
         # 1. 파일 위치 기반 절대 경로 계산
         # 현재 파일(detector.py) 위치: .../project_root/src/detector.py

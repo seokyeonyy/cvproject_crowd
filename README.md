@@ -1,4 +1,4 @@
-# 🚀 CrowdPaulse
+# 🚀 CrowdPulse
 > **YOLOv8** 탐지 모델과 **ByteTrack / BoT-SORT** 알고리즘을 결합하여 전통시장 내 유동 인구를 실시간으로 모니터링하고 히트맵을 통해 공간 혼잡도를 시각화하는 Streamlit 대시보드 시스템입니다.
 
 #1.프로젝트 소개 및 실행 화면
